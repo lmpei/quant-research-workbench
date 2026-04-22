@@ -1,25 +1,30 @@
-# 单票策略研究工作台
+# AI 单票策略研究工作台
 
-一个面向 A 股单票研究的 AI 辅助量化工作台，支持数据导入、规则回测、参数实验、实验留痕与 AI 报告闭环。
+一个面向 **A 股单票策略研究** 的 AI 辅助工作台，围绕 **网格交易** 与 **部分仓位做T** 两类规则策略，把数据导入、回测验证、参数实验、实验留痕、AI 分析和导出结果串成一个完整研究闭环。
 
-## 当前能力
+## 项目定义
 
-- FastAPI 后端
-  - CSV 上传、校验报告与数据预览
-  - A 股交易规则约束
-  - 网格策略回测
-  - 仅分钟级可用的部分仓位做 T 回测
-  - 买入持有基准与超额收益
-  - 异步参数实验任务
-  - Qwen / OpenAI 兼容式 AI 报告，带本地模板回退
-  - SQLite 持久化数据集、回测、实验、报告与任务状态
-- Next.js 前端
-  - `/lab` 中文工作台
-  - `/experiments` 实验历史页
-  - 本地 CSV 导入
-  - 内置 SVG 图表
-  - JSON / Markdown / PNG / PDF 导出
-  - “应用 AI 建议”回填参数并继续实验
+这个项目不是实盘交易系统，也不是聊天式量化助手。  
+它的定位是：
+
+> 一个 AI 参与研究闭环的单票策略研究系统，围绕网格交易和部分仓位做T两类规则策略，完成了数据、回测、实验、留痕、分析和导出的全流程工程化。
+
+## 核心亮点
+
+- A 股研究约束明确：`100 股一手`、`卖出印花税`、`T+1 可卖`、`手续费 / 滑点`
+- 成交语义固定：`signal_on_close_fill_next_open`
+- 双案例预置演示：
+  - `比亚迪日线 + 网格策略`
+  - `比亚迪15分钟 + 部分仓位做T`
+- AI 不是聊天框，而是研究闭环助手：
+  - 生成中文分析报告
+  - 识别风险与失效场景
+  - 推荐下一轮参数实验
+  - 一键回填 AI 建议
+- 完整导出链路：
+  - 图表 PNG
+  - 研究快照 JSON
+  - 报告 Markdown / PDF
 
 ## 目录结构
 
@@ -34,14 +39,35 @@ backend/
     storage.py
   tests/
     test_engine.py
+    test_reporting.py
 
 frontend/
   app/
   components/
   lib/
+
+docs/
+  项目说明.md
+  演示脚本.md
 ```
 
-## 后端启动
+## 快速启动
+
+在项目根目录执行：
+
+```powershell
+cmd /c npm.cmd install
+npm run dev
+```
+
+这会同时启动：
+
+- 前端：`http://127.0.0.1:3000`
+- 后端：`http://127.0.0.1:8000`
+
+## 分开启动
+
+### 后端
 
 ```powershell
 cd backend
@@ -51,9 +77,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-默认地址是 `http://127.0.0.1:8000`。
-
-## 前端启动
+### 前端
 
 ```powershell
 cd frontend
@@ -61,34 +85,20 @@ cmd /c npm.cmd install
 cmd /c npm.cmd run dev
 ```
 
-默认地址是 `http://127.0.0.1:3000`，并请求 `http://127.0.0.1:8000`。
-
-注意：项目根目录目前没有 `package.json`，所以不能在根目录直接执行 `npm run dev`。
-
-正确方式是分开启动：
-
-```powershell
-cd backend
-uvicorn app.main:app --reload
-
-cd ..\frontend
-cmd /c npm.cmd run dev
-```
-
-如果要切换前端请求地址：
+如果要自定义前端请求地址：
 
 ```powershell
 $env:NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:8000"
 cmd /c npm.cmd run dev
-``` 
+```
 
 ## AI 报告配置
 
-后端会按下面的优先级读取模型配置：
+后端按以下优先级读取模型配置：
 
 1. `CHAT_*`
 2. `OPENAI_*`
-3. 都没有时使用本地规则模板报告
+3. 两者都没有时回退到本地规则模板报告
 
 ### Qwen / DashScope 兼容模式
 
@@ -100,7 +110,7 @@ $env:CHAT_MODEL="qwen-plus"
 uvicorn app.main:app --reload
 ```
 
-接口调用走的是 OpenAI-compatible `POST /chat/completions`。
+接口走 OpenAI-compatible `POST /chat/completions`。
 
 ### OpenAI 兼容模式
 
@@ -112,14 +122,26 @@ uvicorn app.main:app --reload
 
 ## 运行测试
 
+在项目根目录执行：
+
 ```powershell
-cd backend
-python -m unittest tests.test_engine
-python -m unittest tests.test_reporting
+npm run test:backend
+npm run build
 ```
+
+或直接执行：
+
+```powershell
+npm test
+```
+
+## 文档
+
+- [项目说明](docs/项目说明.md)
+- [演示脚本](docs/演示脚本.md)
 
 ## 说明
 
-- V1 定位是研究与验证工具，不是实盘交易系统。
-- 部分仓位做 T 默认只对分钟级数据开放，避免在日线数据上做伪回测。
-- 成交语义固定为 `signal_on_close_fill_next_open`。
+- 产品边界锁定为研究工具，不提供模拟下单或实盘执行入口。
+- `partial_t0` 只允许分钟级数据，避免在日线上做伪做T回测。
+- 默认双案例用于面试展示，也可继续导入自定义 CSV 做扩展研究。

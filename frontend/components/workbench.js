@@ -8,7 +8,10 @@ import {
   formatActionLabel,
   formatAdjustmentLabel,
   formatDateLabel,
+  formatJobStatusLabel,
+  formatJobTypeLabel,
   formatMarketRegimeLabel,
+  formatModelSourceLabel,
   formatNumber,
   formatParamEntries,
   formatParamLabel,
@@ -96,6 +99,44 @@ const referenceModeOptions = [
   { value: "prev_close", label: "昨收" },
   { value: "moving_average", label: "均线" },
   { value: "intraday_vwap", label: "日内均价" },
+];
+
+const marketRulesSummary = "A股单票 / 100股一手 / 卖出印花税 / T+1可卖 / 下一根开盘成交";
+
+
+function cloneSweepInputs() {
+  return {
+    grid: { ...defaultSweepInputs.grid },
+    partial_t0: { ...defaultSweepInputs.partial_t0 },
+  };
+}
+
+
+const demoCases = [
+  {
+    id: "grid_daily",
+    title: "网格研究案例",
+    subtitle: "比亚迪日线 · 网格策略",
+    datasetId: "ds_demo_byd_1d",
+    strategyType: "grid",
+    focus: "用于说明规则型策略、参数实验和交易成本如何侵蚀收益。",
+    scenario: "适合讨论震荡市捕捉、趋势市失效和超额收益对比。",
+    config: { ...defaultConfig, max_position_pct: 0.8 },
+    strategyParams: { ...defaultGridParams },
+    sweepInputs: { ...defaultSweepInputs.grid },
+  },
+  {
+    id: "t0_intraday",
+    title: "做T研究案例",
+    subtitle: "比亚迪15分钟 · 部分仓位做T",
+    datasetId: "ds_demo_byd_15m",
+    strategyType: "partial_t0",
+    focus: "用于说明底仓/机动仓联动、分钟级执行与 A 股 T+1 约束。",
+    scenario: "适合讨论机动仓的入场阈值、回归止盈和同日不可卖限制。",
+    config: { ...defaultConfig, max_position_pct: 1.0 },
+    strategyParams: { ...defaultT0Params },
+    sweepInputs: { ...defaultSweepInputs.partial_t0 },
+  },
 ];
 
 
@@ -264,6 +305,36 @@ function TableEmpty({ message }) {
 }
 
 
+function DemoCaseCard({ item, active, onActivate }) {
+  return (
+    <article className={active ? "demo-case-card active" : "demo-case-card"}>
+      <div className="demo-case-head">
+        <div>
+          <strong>{item.title}</strong>
+          <p>{item.subtitle}</p>
+        </div>
+        <span className="subtle-tag">{active ? "当前案例" : "预置演示"}</span>
+      </div>
+      <p className="demo-case-copy">{item.focus}</p>
+      <p className="demo-case-copy muted">{item.scenario}</p>
+      <button className={active ? "ghost-button" : ""} onClick={() => onActivate(item.id)}>
+        {active ? "已载入案例" : "载入此案例"}
+      </button>
+    </article>
+  );
+}
+
+
+function StatusItem({ label, value, tone = "default" }) {
+  return (
+    <div className={`status-item status-${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+
 function renderFieldGroup(formState, setFormState, definitions) {
   return (
     <div className="form-grid">
@@ -289,11 +360,12 @@ export default function Workbench() {
   const [config, setConfig] = useState(defaultConfig);
   const [gridParams, setGridParams] = useState(defaultGridParams);
   const [t0Params, setT0Params] = useState(defaultT0Params);
-  const [sweepInputs, setSweepInputs] = useState(defaultSweepInputs);
+  const [sweepInputs, setSweepInputs] = useState(cloneSweepInputs);
   const [backtest, setBacktest] = useState(null);
   const [activeExperiment, setActiveExperiment] = useState(null);
   const [experiments, setExperiments] = useState([]);
   const [report, setReport] = useState(null);
+  const [systemStatus, setSystemStatus] = useState(null);
   const [activeTab, setActiveTab] = useState("price");
   const [leftTab, setLeftTab] = useState("research");
   const [status, setStatus] = useState("正在加载研究工作台...");
@@ -311,9 +383,22 @@ export default function Workbench() {
   const strategyDisabled = strategyType === "partial_t0" && datasetDetail?.timeframe === "1d";
   const selectedChartId = activeTab === "price" ? "price-chart-svg" : "equity-chart-svg";
   const summary = backtest?.summary;
+  const activeDemoCase = useMemo(
+    () => demoCases.find((item) => item.datasetId === datasetId && item.strategyType === strategyType) || null,
+    [datasetId, strategyType],
+  );
+  const latestJob = systemStatus?.recent_job;
+  const latestFailedJob = systemStatus?.last_failed_job;
+  const llmSummary = systemStatus?.llm?.model
+    ? `${formatModelSourceLabel(systemStatus.llm.source)} · ${systemStatus.llm.model}`
+    : formatModelSourceLabel(systemStatus?.llm?.source);
 
   useEffect(() => {
     loadAll();
+    const timer = setInterval(() => {
+      loadSystemStatus(true).catch(() => {});
+    }, 20000);
+    return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -327,7 +412,6 @@ export default function Workbench() {
           return;
         }
         setDatasetDetail(payload);
-        setStatus("");
       })
       .catch((error) => {
         if (!active) {
@@ -339,6 +423,13 @@ export default function Workbench() {
       active = false;
     };
   }, [datasetId]);
+
+  useEffect(() => {
+    if (!datasetId) {
+      return;
+    }
+    loadExperiments().catch(() => {});
+  }, [datasetId, strategyType]);
 
   useEffect(() => {
     if (!jobs.sweep && !jobs.report) {
@@ -356,11 +447,13 @@ export default function Workbench() {
             setBusy((current) => ({ ...current, sweep: false }));
             setStatus("参数实验已完成，可点击结果回填参数。");
             loadExperiments();
+            await loadSystemStatus(true).catch(() => {});
           }
           if (job.status === "failed") {
             setJobs((current) => ({ ...current, sweep: null }));
             setBusy((current) => ({ ...current, sweep: false }));
             setStatus(translateError(job.error_text || "参数实验失败。"));
+            await loadSystemStatus(true).catch(() => {});
           }
         }
         if (jobs.report) {
@@ -371,11 +464,13 @@ export default function Workbench() {
             setJobs((current) => ({ ...current, report: null }));
             setBusy((current) => ({ ...current, report: false }));
             setStatus("AI 分析报告已生成。");
+            await loadSystemStatus(true).catch(() => {});
           }
           if (job.status === "failed") {
             setJobs((current) => ({ ...current, report: null }));
             setBusy((current) => ({ ...current, report: false }));
             setStatus(translateError(job.error_text || "报告生成失败。"));
+            await loadSystemStatus(true).catch(() => {});
           }
         }
       } catch (error) {
@@ -387,11 +482,17 @@ export default function Workbench() {
   }, [jobs]);
 
   async function loadAll() {
-    const [datasetResult, experimentResult] = await Promise.allSettled([loadDatasets(), loadExperiments()]);
-    const rejection = [datasetResult, experimentResult].find((item) => item.status === "rejected");
+    const [datasetResult, experimentResult, systemResult] = await Promise.allSettled([
+      loadDatasets(),
+      loadExperiments(),
+      loadSystemStatus(true),
+    ]);
+    const rejection = [datasetResult, experimentResult, systemResult].find((item) => item.status === "rejected");
     if (rejection) {
       setStatus(translateError(rejection.reason?.message));
+      return;
     }
+    setStatus("默认案例已就绪，可直接运行回测或切换另一条研究主线。");
   }
 
   async function loadDatasets() {
@@ -409,6 +510,72 @@ export default function Workbench() {
   async function loadExperiments() {
     const items = await api("/api/experiments");
     setExperiments(items);
+    const preferred = items.find((item) => item.dataset_id === datasetId && item.strategy_type === strategyType) || items[0];
+    if (preferred) {
+      try {
+        const detail = await api(`/api/experiments/${preferred.experiment_id}`);
+        setActiveExperiment(detail);
+      } catch {
+        setActiveExperiment(null);
+      }
+    } else {
+      setActiveExperiment(null);
+    }
+  }
+
+  async function loadSystemStatus(silent = false) {
+    try {
+      const payload = await api("/api/system/status");
+      setSystemStatus(payload);
+      return payload;
+    } catch (error) {
+      setSystemStatus({
+        status: "unreachable",
+        error_text: translateError(error.message),
+        llm: {
+          source: "template",
+          provider_label: "规则模板",
+          model: null,
+          base_url: null,
+        },
+        rules: {
+          lot_size: 100,
+          sell_stamp_duty_rate: 0.001,
+          t_plus_one: true,
+        },
+      });
+      if (!silent) {
+        setStatus(translateError(error.message));
+      }
+      throw error;
+    }
+  }
+
+  function activateDemoCase(caseId) {
+    const selectedCase = demoCases.find((item) => item.id === caseId);
+    if (!selectedCase) {
+      return;
+    }
+    setDatasetId(selectedCase.datasetId);
+    setStrategyType(selectedCase.strategyType);
+    setConfig(selectedCase.config);
+    setGridParams(defaultGridParams);
+    setT0Params(defaultT0Params);
+    if (selectedCase.strategyType === "grid") {
+      setGridParams(selectedCase.strategyParams);
+    } else {
+      setT0Params(selectedCase.strategyParams);
+    }
+    setSweepInputs({
+      ...cloneSweepInputs(),
+      [selectedCase.strategyType]: { ...selectedCase.sweepInputs },
+    });
+    setBacktest(null);
+    setReport(null);
+    setActiveExperiment(null);
+    setActiveTab("price");
+    setLeftTab("research");
+    setStatus(`已切换到“${selectedCase.title}”，现在可以直接运行回测。`);
   }
 
   async function runBacktest() {
@@ -648,8 +815,8 @@ export default function Workbench() {
         <div className="brand-block">
           <p className="eyebrow">AI辅助单票量化研究</p>
           <div className="brand-row">
-            <h1>策略研究工作台</h1>
-            <span className="subtle-tag">A股单票 · 研究用途 · 首屏优化</span>
+            <h1>AI 单票策略研究工作台</h1>
+            <span className="subtle-tag">A股单票 · 研究闭环 · 双案例演示</span>
           </div>
         </div>
 
@@ -698,6 +865,12 @@ export default function Workbench() {
       {status ? <div className="status-banner">{status}</div> : null}
       {strategyDisabled ? <div className="warning-banner">部分仓位做T策略仅支持分钟级数据，当前日线数据下不会执行该策略。</div> : null}
 
+      <section className="demo-case-strip">
+        {demoCases.map((item) => (
+          <DemoCaseCard key={item.id} item={item} active={activeDemoCase?.id === item.id} onActivate={activateDemoCase} />
+        ))}
+      </section>
+
       <section className="workspace-grid">
         <aside className="workspace-panel">
           <div className="panel-topline">
@@ -715,6 +888,27 @@ export default function Workbench() {
           <div className="panel-scroll">
             {leftTab === "research" ? (
               <>
+                <section className="panel-section">
+                  <div className="section-head">
+                    <h2>案例定位</h2>
+                    <span>{activeDemoCase ? "预置主线" : "自定义研究"}</span>
+                  </div>
+                  <div className="info-stack">
+                    <p>
+                      <strong>当前案例：</strong>
+                      {activeDemoCase?.title || "自定义组合"}
+                    </p>
+                    <p>
+                      <strong>研究焦点：</strong>
+                      {activeDemoCase?.focus || "当前组合由你自由配置，可用于额外验证策略想法。"}
+                    </p>
+                    <p>
+                      <strong>讨论重点：</strong>
+                      {activeDemoCase?.scenario || "建议结合指标摘要、实验结果和 AI 建议来组织复盘。"}
+                    </p>
+                  </div>
+                </section>
+
                 <section className="panel-section">
                   <div className="section-head">
                     <h2>当前数据</h2>
@@ -851,6 +1045,10 @@ export default function Workbench() {
                   </div>
                   <div className="info-stack">
                     <p>
+                      <strong>当前案例：</strong>
+                      {activeDemoCase?.subtitle || "自定义研究路径"}
+                    </p>
+                    <p>
                       <strong>默认策略：</strong>
                       {formatStrategyLabel(strategyType)}
                     </p>
@@ -956,6 +1154,29 @@ export default function Workbench() {
         </section>
 
         <aside className="workspace-panel right-panel">
+          <section className="panel-section">
+            <div className="section-head">
+              <h2>系统状态</h2>
+              <span>{systemStatus?.status === "ok" ? "后端已连接" : "等待连接"}</span>
+            </div>
+            <div className="status-grid">
+              <StatusItem label="后端接口" value={systemStatus?.status === "ok" ? "已连接" : "未连接"} tone={systemStatus?.status === "ok" ? "green" : "red"} />
+              <StatusItem label="当前案例" value={activeDemoCase?.title || "自定义研究"} />
+              <StatusItem label="当前数据集" value={datasetDetail?.name || "--"} />
+              <StatusItem label="模型来源" value={llmSummary || "规则模板"} />
+              <StatusItem
+                label="最近任务"
+                value={latestJob ? `${formatJobTypeLabel(latestJob.job_type)} · ${formatJobStatusLabel(latestJob.status)}` : "暂无任务"}
+              />
+              <StatusItem label="最近错误" value={latestFailedJob?.error_text || systemStatus?.error_text || "暂无"} tone={latestFailedJob?.error_text ? "red" : "default"} />
+            </div>
+            <div className="note-box">
+              市场规则：{marketRulesSummary}
+              <br />
+              当前成交语义：信号收盘判定，下一根开盘成交。
+            </div>
+          </section>
+
           <section className="panel-section">
             <div className="section-head">
               <h2>指标摘要</h2>

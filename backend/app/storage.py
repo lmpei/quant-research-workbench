@@ -312,6 +312,14 @@ def get_report(report_id: str) -> dict | None:
     return payload
 
 
+def normalize_job_row(row: sqlite3.Row | dict) -> dict:
+    payload = dict(row)
+    payload["request"] = json.loads(payload.pop("request_json"))
+    payload["result_ref"] = json.loads(payload["result_ref_json"]) if payload["result_ref_json"] else None
+    payload.pop("result_ref_json")
+    return payload
+
+
 def create_job(job_id: str, job_type: str, request_payload: dict) -> dict:
     now = datetime.utcnow().isoformat()
     with get_connection() as connection:
@@ -360,8 +368,18 @@ def get_job(job_id: str) -> dict | None:
         row = connection.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
     if not row:
         return None
-    payload = dict(row)
-    payload["request"] = json.loads(payload.pop("request_json"))
-    payload["result_ref"] = json.loads(payload["result_ref_json"]) if payload["result_ref_json"] else None
-    payload.pop("result_ref_json")
-    return payload
+    return normalize_job_row(row)
+
+
+def list_recent_jobs(limit: int = 10) -> list[dict]:
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT *
+            FROM jobs
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [normalize_job_row(row) for row in rows]

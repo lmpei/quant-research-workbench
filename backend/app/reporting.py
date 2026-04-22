@@ -135,6 +135,25 @@ def provider_label(settings: dict[str, str]) -> str:
     return settings.get("provider", "模型服务")
 
 
+def llm_runtime_status() -> dict[str, Any]:
+    settings = read_llm_settings()
+    if not settings:
+        return {
+            "source": "template",
+            "provider": "template",
+            "provider_label": "规则模板",
+            "model": None,
+            "base_url": None,
+        }
+    return {
+        "source": settings["provider"],
+        "provider": settings["provider"],
+        "provider_label": provider_label(settings),
+        "model": settings["model"],
+        "base_url": settings["base_url"],
+    }
+
+
 def infer_market_regime(backtest: dict[str, Any]) -> str:
     summary = backtest["summary"]
     benchmark_return = summary.get("benchmark_return") or 0

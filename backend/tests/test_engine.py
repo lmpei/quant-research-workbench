@@ -67,6 +67,40 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(all(trade["quantity"] % 100 == 0 for trade in result["trades"]))
         self.assertEqual(len(result["timeseries"]["benchmark_curve"]), 4)
 
+    def test_partial_t0_rejects_daily_dataset(self) -> None:
+        start = datetime(2025, 1, 2, 15, 0)
+        dataset = {
+            "dataset_id": "ds_test_t0_daily",
+            "dataset_hash": "hash_t0_daily",
+            "timeframe": "1d",
+            "candles": [
+                candle(start, 100, 101, 99.5, 100),
+                candle(start + timedelta(days=1), 99.2, 100.1, 98.6, 99.6),
+                candle(start + timedelta(days=2), 99.8, 101.2, 99.1, 100.7),
+            ],
+        }
+        with self.assertRaises(ValueError):
+            run_backtest(
+                dataset,
+                strategy_type="partial_t0",
+                backtest_config_payload={
+                    "initial_cash": 100000,
+                    "fee_rate": 0.0003,
+                    "slippage_rate": 0.0005,
+                    "lot_size": 100,
+                    "max_position_pct": 1.0,
+                },
+                strategy_params={
+                    "base_position_pct": 0.7,
+                    "active_position_pct": 0.3,
+                    "buy_trigger_pct": 0.015,
+                    "sell_trigger_pct": 0.015,
+                    "mean_revert_target_pct": 0.008,
+                    "stop_loss_pct": 0.02,
+                    "reference_mode": "prev_close",
+                },
+            )
+
     def test_partial_t0_active_inventory_cannot_sell_same_day(self) -> None:
         start = datetime(2025, 1, 2, 9, 45)
         dataset = {
@@ -117,6 +151,7 @@ class EngineTests(unittest.TestCase):
             datetime.fromisoformat(sell_trade["datetime"]).date(),
             datetime.fromisoformat(buy_trade["datetime"]).date(),
         )
+        self.assertGreater(sell_trade["tax"], 0)
 
 
 if __name__ == "__main__":

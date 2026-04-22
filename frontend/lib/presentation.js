@@ -40,6 +40,24 @@ const ACTION_LABELS = {
   inspect: "参考",
 };
 
+const MODEL_SOURCE_LABELS = {
+  qwen: "Qwen 模型",
+  openai: "OpenAI 兼容模型",
+  template: "规则模板",
+};
+
+const JOB_TYPE_LABELS = {
+  sweep: "参数实验",
+  report: "AI 报告",
+};
+
+const JOB_STATUS_LABELS = {
+  queued: "排队中",
+  running: "运行中",
+  completed: "已完成",
+  failed: "失败",
+};
+
 const REFERENCE_MODE_LABELS = {
   prev_close: "昨收",
   moving_average: "均线",
@@ -119,6 +137,21 @@ export function formatRiskLevelLabel(value) {
 
 export function formatActionLabel(value) {
   return ACTION_LABELS[value] || value || "--";
+}
+
+
+export function formatModelSourceLabel(value) {
+  return MODEL_SOURCE_LABELS[value] || value || "--";
+}
+
+
+export function formatJobTypeLabel(value) {
+  return JOB_TYPE_LABELS[value] || value || "--";
+}
+
+
+export function formatJobStatusLabel(value) {
+  return JOB_STATUS_LABELS[value] || value || "--";
 }
 
 

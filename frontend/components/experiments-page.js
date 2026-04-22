@@ -112,6 +112,11 @@ export default function ExperimentsPage() {
               </p>
             </div>
 
+            <div className="info-stack">
+              <p>
+                <strong>最佳组合：</strong>
+              </p>
+            </div>
             <pre className="history-params">{formatParamEntries(experiment.top_run?.params || {}) || "--"}</pre>
           </article>
         ))}

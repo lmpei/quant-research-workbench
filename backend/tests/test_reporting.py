@@ -6,7 +6,7 @@ from unittest.mock import patch
 import unittest
 
 from app.engine import run_backtest
-from app.reporting import build_chat_request, generate_report, read_llm_settings
+from app.reporting import build_chat_request, generate_report, llm_runtime_status, read_llm_settings
 
 
 def candle(ts: datetime, open_: float, high: float, low: float, close: float, volume: float = 10000) -> dict:
@@ -29,10 +29,10 @@ def demo_backtest() -> tuple[dict, dict]:
         "symbol": "002594.SZ",
         "timeframe": "1d",
         "candles": [
-          candle(start, 100, 101, 99.5, 100),
-          candle(start + timedelta(days=1), 99, 99.3, 96.5, 97),
-          candle(start + timedelta(days=2), 96.5, 101.5, 96, 101),
-          candle(start + timedelta(days=3), 100.5, 102, 100, 101.2),
+            candle(start, 100, 101, 99.5, 100),
+            candle(start + timedelta(days=1), 99, 99.3, 96.5, 97),
+            candle(start + timedelta(days=2), 96.5, 101.5, 96, 101),
+            candle(start + timedelta(days=3), 100.5, 102, 100, 101.2),
         ],
     }
     backtest = run_backtest(
@@ -107,6 +107,30 @@ class ReportingTests(unittest.TestCase):
         self.assertIn("## 参数优化建议", report["raw_markdown"])
         self.assertTrue(report["structured_recommendations"]["market_regime_label"])
         self.assertGreaterEqual(len(report["next_experiments"]), 1)
+
+    def test_llm_runtime_status_without_keys_uses_template(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            runtime = llm_runtime_status()
+
+        self.assertEqual(runtime["source"], "template")
+        self.assertEqual(runtime["provider_label"], "规则模板")
+
+    def test_llm_runtime_status_prefers_chat_provider(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "CHAT_PROVIDER": "qwen",
+                "CHAT_API_KEY": "chat-key",
+                "CHAT_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "CHAT_MODEL": "qwen-plus",
+            },
+            clear=True,
+        ):
+            runtime = llm_runtime_status()
+
+        self.assertEqual(runtime["source"], "qwen")
+        self.assertEqual(runtime["provider_label"], "Qwen")
+        self.assertEqual(runtime["model"], "qwen-plus")
 
 
 if __name__ == "__main__":

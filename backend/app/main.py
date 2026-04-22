@@ -7,9 +7,10 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from .datasets import parse_csv_upload
+from .domain import CN_A_SHARE, DEFAULT_EXECUTION_MODE, SELL_STAMP_DUTY_RATE
 from .engine import run_backtest, run_parameter_sweep
 from .jobs import JobManager
-from .reporting import generate_report
+from .reporting import generate_report, llm_runtime_status
 from .storage import (
     ensure_demo_dataset,
     get_backtest,
@@ -20,6 +21,7 @@ from .storage import (
     init_db,
     list_datasets,
     list_experiments,
+    list_recent_jobs,
     save_backtest,
     save_dataset,
     save_experiment,
@@ -76,9 +78,59 @@ def parse_dataset_payload(record: dict[str, Any], *, include_candles: bool = Fal
     return payload
 
 
+def summarize_job(job: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not job:
+        return None
+    return {
+        "job_id": job["job_id"],
+        "job_type": job["job_type"],
+        "status": job["status"],
+        "error_text": job.get("error_text"),
+        "created_at": job.get("created_at"),
+        "started_at": job.get("started_at"),
+        "finished_at": job.get("finished_at"),
+        "result_ref": job.get("result_ref"),
+    }
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/system/status")
+def system_status() -> dict[str, Any]:
+    datasets_payload = [parse_dataset_payload(item, include_candles=False) for item in list_datasets()]
+    jobs = list_recent_jobs(limit=12)
+    recent_job = jobs[0] if jobs else None
+    last_failed_job = next((job for job in jobs if job["status"] == "failed"), None)
+    return {
+        "status": "ok",
+        "product_name": "AI 单票策略研究工作台",
+        "market": CN_A_SHARE,
+        "execution_mode": DEFAULT_EXECUTION_MODE,
+        "rules": {
+            "lot_size": 100,
+            "sell_stamp_duty_rate": SELL_STAMP_DUTY_RATE,
+            "t_plus_one": True,
+            "fee_included": True,
+            "slippage_included": True,
+        },
+        "llm": llm_runtime_status(),
+        "datasets_total": len(datasets_payload),
+        "demo_datasets": [
+            {
+                "dataset_id": item["dataset_id"],
+                "name": item["name"],
+                "symbol": item["symbol"],
+                "timeframe": item["timeframe"],
+            }
+            for item in datasets_payload
+            if item["source_type"] == "demo"
+        ],
+        "recent_job": summarize_job(recent_job),
+        "last_failed_job": summarize_job(last_failed_job),
+    }
 
 
 @app.get("/api/datasets")
