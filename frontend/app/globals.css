@@ -136,11 +136,10 @@ pre {
 }
 
 .lab-shell {
-  height: 100dvh;
+  min-height: 100dvh;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
   gap: 10px;
-  overflow: hidden;
 }
 
 .history-shell {
@@ -273,10 +272,12 @@ pre {
 
 .workspace-grid {
   min-height: 0;
+  height: min(720px, calc(100dvh - 238px));
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr) 372px;
   gap: 12px;
   overflow: hidden;
+  align-items: stretch;
 }
 
 .workspace-panel {
@@ -499,7 +500,7 @@ pre {
 .chart-svg {
   width: 100%;
   flex: 1 1 auto;
-  min-height: 230px;
+  min-height: 210px;
 }
 
 .chart-grid {
@@ -535,15 +536,18 @@ pre {
 }
 
 .trade-pane {
-  flex: 0 0 236px;
+  flex: 0 0 220px;
+  min-height: 220px;
 }
 
 .fixed-height-pane {
-  flex: 0 0 230px;
+  flex: 0 0 206px;
+  min-height: 206px;
 }
 
 .report-pane {
   flex: 1 1 auto;
+  min-height: 0;
 }
 
 .trade-table,
@@ -814,7 +818,6 @@ pre {
 
 @media (max-width: 1180px) {
   .lab-shell {
-    height: auto;
     min-height: 100dvh;
     overflow: visible;
     grid-template-rows: auto auto auto;
@@ -832,6 +835,32 @@ pre {
   .workspace-panel,
   .center-panel,
   .right-panel,
+  .chart-stage,
+  .trade-pane,
+  .fixed-height-pane,
+  .report-pane {
+    min-height: unset;
+    flex: none;
+  }
+
+  .panel-scroll,
+  .table-scroll,
+  .report-scroll {
+    overflow: visible;
+    padding-right: 0;
+  }
+}
+
+@media (max-height: 920px) and (min-width: 1181px) {
+  .lab-shell {
+    min-height: 100dvh;
+  }
+
+  .workspace-grid {
+    height: auto;
+    overflow: visible;
+  }
+
   .chart-stage,
   .trade-pane,
   .fixed-height-pane,

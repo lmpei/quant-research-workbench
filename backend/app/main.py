@@ -35,6 +35,7 @@ job_manager = JobManager()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -96,6 +97,16 @@ def summarize_job(job: dict[str, Any] | None) -> dict[str, Any] | None:
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/")
+def root() -> dict[str, str]:
+    return {
+        "message": "AI 单票策略研究工作台 API 已启动。",
+        "health": "/api/health",
+        "system_status": "/api/system/status",
+        "docs": "/docs",
+    }
 
 
 @app.get("/api/system/status")

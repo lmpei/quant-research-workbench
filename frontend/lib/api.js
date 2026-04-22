@@ -1,7 +1,20 @@
 import { translateError } from "./presentation";
 
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+const DEFAULT_API_PORT = "8100";
+
+export function getApiBaseUrl() {
+  if (process.env.NEXT_PUBLIC_API_BASE_URL) {
+    return process.env.NEXT_PUBLIC_API_BASE_URL;
+  }
+  if (typeof window !== "undefined") {
+    if (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost") {
+      return `${window.location.protocol}//${window.location.hostname}:${DEFAULT_API_PORT}`;
+    }
+    return window.location.origin;
+  }
+  return `http://127.0.0.1:${DEFAULT_API_PORT}`;
+}
 
 async function parseError(response) {
   try {
@@ -13,7 +26,7 @@ async function parseError(response) {
 }
 
 export async function api(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
     ...options,
     headers: {
       ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
